@@ -35,7 +35,7 @@ func TestServer(t *testing.T) {
 
 	tests := getTests()
 
-	for _, test := range tests {
+	for test := range tests {
 		if err := runTest(server.URL, test); err != nil {
 			t.Fatalf("not ok %s: %s", test.name, err)
 		} else {
@@ -46,12 +46,12 @@ func TestServer(t *testing.T) {
 
 // In our real codebase this would return a lot of tests, but here we'll just
 // stub out 10 tests with a single request each.
-func getTests() []test {
+func getTests() chan test {
 	count := 10
-	tests := make([]test, count)
+	tests := make(chan test, count)
 
 	for i := 0; i < count; i++ {
-		tests[i] = test{
+		tests <- test{
 			name: fmt.Sprintf("Test %d", i+1),
 			requests: []testRequest{{
 				path: fmt.Sprintf("/test/%d", i+1),
@@ -68,6 +68,9 @@ func getTests() []test {
 			}},
 		}
 	}
+
+	// signal that no more tests will be sent over the channel
+	close(tests)
 
 	return tests
 }
