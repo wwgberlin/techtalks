@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // A test has a name and contains a series of requests to perform against the
@@ -25,6 +26,12 @@ type testRequest struct {
 	check   func(*http.Response) error
 }
 
+type testResult struct {
+	name     string
+	err      error
+	duration time.Duration
+}
+
 // Starts a test server and executes the tests in serverTests
 func TestServer(t *testing.T) {
 	mux := createMux()
@@ -36,10 +43,11 @@ func TestServer(t *testing.T) {
 	tests := getTests()
 
 	for test := range tests {
-		if err := runTest(server.URL, test); err != nil {
-			t.Fatalf("not ok %s: %s", test.name, err)
+		result := runTest(server.URL, test)
+		if result.err != nil {
+			t.Fatalf("not ok %s (%dms): %s", result.name, result.duration, result.err)
 		} else {
-			t.Logf("ok %s", test.name)
+			t.Logf("ok %s (%dms)", result.name, result.duration)
 		}
 	}
 }
@@ -75,16 +83,20 @@ func getTests() chan test {
 	return tests
 }
 
-func runTest(serverURL string, test test) error {
+func runTest(serverURL string, test test) testResult {
+	result := testResult{name: test.name}
+	start := time.Now()
+
 	for i, request := range test.requests {
 		res, err := http.Get(serverURL + request.path)
-		if err != nil {
-			return fmt.Errorf("Request %d: %s", i, err)
+		if err == nil {
+			err = request.check(res)
 		}
-		err = request.check(res)
 		if err != nil {
-			return fmt.Errorf("Request %d: %s", i, err)
+			result.err = fmt.Errorf("Request %d: %s", i, err)
 		}
 	}
-	return nil
+
+	result.duration = time.Now().Sub(start) / 1000000
+	return result
 }
