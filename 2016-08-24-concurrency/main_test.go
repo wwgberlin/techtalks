@@ -41,9 +41,25 @@ func TestServer(t *testing.T) {
 	defer server.Close()
 
 	tests := getTests()
+	results := make(chan testResult)
+	done := make(chan bool)
+	numWorkers := 8
 
-	for test := range tests {
-		result := runTest(server.URL, test)
+	// start a few worker go-routines
+	for i := 0; i < numWorkers; i++ {
+		go startWorker(server.URL, tests, results, done)
+	}
+
+	// close the results channel when all workers finish
+	go func() {
+		for i := 0; i < numWorkers; i++ {
+			<-done
+		}
+		close(results)
+	}()
+
+	// collect all the results
+	for result := range results {
 		if result.err != nil {
 			t.Fatalf("not ok %s (%dms): %s", result.name, result.duration, result.err)
 		} else {
@@ -81,6 +97,13 @@ func getTests() chan test {
 	close(tests)
 
 	return tests
+}
+
+func startWorker(serverURL string, tests chan test, results chan testResult, done chan bool) {
+	for test := range tests {
+		results <- runTest(serverURL, test)
+	}
+	done <- true
 }
 
 func runTest(serverURL string, test test) testResult {
